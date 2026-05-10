@@ -1349,17 +1349,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ratatui-cli"
-version = "0.1.0"
-dependencies = [
- "color-eyre",
- "crossterm",
- "ratatui",
- "ssh2-config",
- "tui-prompts",
-]
-
-[[package]]
 name = "ratatui-core"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1663,6 +1652,17 @@ dependencies = [
  "log",
  "thiserror 2.0.18",
  "wildmatch",
+]
+
+[[package]]
+name = "sshost"
+version = "0.1.0"
+dependencies = [
+ "color-eyre",
+ "crossterm",
+ "ratatui",
+ "ssh2-config",
+ "tui-prompts",
 ]
 
 [[package]]
