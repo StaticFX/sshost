@@ -2,7 +2,7 @@ use ssh2_config::{ParseRule, SshConfig};
 use std::env::home_dir;
 use std::fs::File;
 use std::io;
-use std::io::BufReader;
+use std::io::{BufReader, BufWriter, Write};
 
 #[derive(Debug, Clone)]
 pub enum AuthMethod {
@@ -18,11 +18,14 @@ pub struct SSHConfig {
     pub auth: Option<AuthMethod>,
 }
 
-pub fn get_ssh_entries() -> Vec<SSHConfig> {
+fn get_ssh_config() -> io::Result<File> {
     let suffix = ".ssh/config";
     let ssh_dir = format!("{}/{suffix}", home_dir().unwrap().display());
+    File::open(ssh_dir)
+}
 
-    let mut reader = BufReader::new(File::open(ssh_dir).unwrap());
+pub fn get_ssh_entries() -> Vec<SSHConfig> {
+    let mut reader = BufReader::new(get_ssh_config().unwrap());
     let config = (SshConfig::default())
         .parse(&mut reader, ParseRule::STRICT)
         .unwrap();
@@ -72,27 +75,48 @@ pub fn get_ssh_entries() -> Vec<SSHConfig> {
         .collect()
 }
 
-pub fn write_new_host(host: SSHConfig) -> () {
+
+fn build_entry(host: SSHConfig) -> String {
+    let mut entry = String::from("");
+
     let mut host_str = String::from("Host ");
     host_str.push_str(host.host.as_str());
+    entry.push_str(host_str.as_str());
 
     let mut hostname_str = String::from("Hostname ");
     hostname_str.push_str(host.hostname.as_str());
+    entry.push_str(hostname_str.as_str());
 
+    let mut username_str = String::from("User ");
     if let Some(user) = host.username {
-        let mut username_str = String::from("User ");
         username_str.push_str(user.as_str());
+        entry.push_str(username_str.as_str());
     }
 
+    let mut port_str = String::from("Port ");
     if let Some(port) = host.port {
-        let mut port_str = String::from("Port ");
         port_str.push_str(port.to_string().as_str());
+        entry.push_str(port_str.as_str());
     }
 
+    let mut auth_str = String::from("");
     if let Some(auth) = host.auth {
-        let mut auth_str = String::from("IdentityFile ");
-        //auth_str.push_str(auth.to_string().as_str());
+        match auth {
+            AuthMethod::Password(_p) =>  {
+                auth_str.push_str("PasswordAuthentication yes");
+            },
+            AuthMethod::Key(p) => {
+                auth_str.push_str("IdentityFile ");
+                auth_str.push_str(&p)
+
+            },
+        }
+        entry.push_str(auth_str.as_str());
     }
-    let mut entry = String::new();
-    //entry.push_str("Host ".to_string().join);
+    entry
+}
+pub fn write_new_host(host: SSHConfig) -> io::Result<()> {
+    let mut writer = BufWriter::new(get_ssh_config()?);
+    writer.write_all(build_entry(host).as_bytes())?;
+    Ok(())
 }
