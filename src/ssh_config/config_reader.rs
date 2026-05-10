@@ -5,15 +5,15 @@ use std::io;
 use std::io::BufReader;
 
 pub enum AuthMethod {
-    Password,
-    Key,
+    Password(String),
+    Key(String),
 }
 pub struct SSHConfig {
     host: String,
     hostname: String,
-    username: String,
-    port: u16,
-    auth: AuthMethod,
+    username: Option<String>,
+    port: Option<u16>,
+    auth: Option<AuthMethod>,
 }
 
 pub fn get_ssh_entries() -> Vec<SSHConfig> {
@@ -61,14 +61,35 @@ pub fn get_ssh_entries() -> Vec<SSHConfig> {
             Some(SSHConfig {
                 host,
                 hostname,
-                username,
-                port,
-                auth,
+                username: Some(username),
+                port: Some(port),
+                auth: Some(auth("a".to_string())),
             })
         })
         .collect()
 }
 
 pub fn write_new_host(host: SSHConfig) -> () {
+    let mut host_str = String::from("Host ");
+    host_str.push_str(host.host.as_str());
 
+    let mut hostname_str = String::from("Hostname ");
+    hostname_str.push_str(host.hostname.as_str());
+
+    if let Some(user) = host.username {
+        let mut username_str = String::from("User ");
+        username_str.push_str(user.as_str());
+    }
+
+    if let Some(port) = host.port {
+        let mut port_str = String::from("Port ");
+        port_str.push_str(port.to_string().as_str());
+    }
+
+    if let Some(auth) = host.auth {
+        let mut auth_str = String::from("IdentityFile ");
+        //auth_str.push_str(auth.to_string().as_str());
+    }
+    let mut entry = String::new();
+    entry.push_str("Host ".to_string().join);
 }
