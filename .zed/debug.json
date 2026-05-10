@@ -1,0 +1,10 @@
+[
+  {
+    "label": "Debug ratatui-cli",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "program": "${workspaceFolder}/target/debug/ratatui-cli",
+    "args": [],
+    "preLaunchTask": "cargo build"
+  }
+]

@@ -5,6 +5,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use crate::{
     app::App,
     event::{Event, EventHandler},
+    ssh_config::config_reader::AuthMethod,
     tui::Tui,
 };
 
@@ -37,7 +38,23 @@ fn main() -> color_eyre::Result<()> {
 
         if let Some(host) = app.current_ssh.take() {
             tui.exit()?; // restore terminal
-            let status = Command::new("ssh").arg(&host).status()?;
+            let mut cmd = Command::new("ssh");
+
+            if let Some(user) = &host.username {
+                cmd.arg("-l").arg(user);
+            }
+
+            if let Some(port) = host.port {
+                cmd.arg("-p").arg(port.to_string());
+            }
+
+            if let Some(AuthMethod::Key(key_path)) = &host.auth {
+                cmd.arg("-i").arg(key_path);
+            }
+
+            cmd.arg(&host.hostname);
+
+            let status = cmd.status()?;
 
             if !status.success() {
                 let error = match status.code() {

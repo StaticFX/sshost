@@ -1,4 +1,4 @@
-use crate::app::screen::Screen;
+use crate::{app::screen::Screen, ssh_config::config_reader::SSHConfig};
 
 pub mod screen;
 
@@ -6,7 +6,7 @@ pub mod screen;
 pub struct App {
     pub should_quit: bool,
     pub current_screen: Screen,
-    pub current_ssh: Option<String>,
+    pub current_ssh: Option<SSHConfig>,
     pub ssh_status: Option<String>,
 }
 

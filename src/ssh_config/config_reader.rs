@@ -4,21 +4,24 @@ use std::fs::File;
 use std::io;
 use std::io::BufReader;
 
+#[derive(Debug, Clone)]
 pub enum AuthMethod {
     Password(String),
     Key(String),
 }
+#[derive(Debug, Clone)]
 pub struct SSHConfig {
-    host: String,
-    hostname: String,
-    username: Option<String>,
-    port: Option<u16>,
-    auth: Option<AuthMethod>,
+    pub host: String,
+    pub hostname: String,
+    pub username: Option<String>,
+    pub port: Option<u16>,
+    pub auth: Option<AuthMethod>,
 }
 
 pub fn get_ssh_entries() -> Vec<SSHConfig> {
     let suffix = ".ssh/config";
-    let ssh_dir = format!("{}{suffix}", home_dir().unwrap().display());
+    let ssh_dir = format!("{}/{suffix}", home_dir().unwrap().display());
+
     let mut reader = BufReader::new(File::open(ssh_dir).unwrap());
     let config = (SshConfig::default())
         .parse(&mut reader, ParseRule::STRICT)

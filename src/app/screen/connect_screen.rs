@@ -1,4 +1,4 @@
-use std::{os::unix::process::CommandExt, process::Command};
+use std::{boxed, os::unix::process::CommandExt, process::Command};
 
 use crossterm::{event::KeyCode, execute, terminal::disable_raw_mode};
 use ratatui::{
@@ -10,19 +10,23 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 
-use crate::app::{
-    App,
-    screen::{
-        SCREEN_HEIGHT_PERCENTAGE, SCREEN_WIDTH_PERCENTAGE, Screen, connect_screen,
-        intro_screen::IntroScreen,
+use crate::{
+    app::{
+        App,
+        screen::{
+            SCREEN_HEIGHT_PERCENTAGE, SCREEN_WIDTH_PERCENTAGE, Screen, connect_screen,
+            intro_screen::IntroScreen,
+        },
     },
+    ssh_config::config_reader::{AuthMethod, SSHConfig, get_ssh_entries},
 };
 
 #[derive(Debug)]
 pub struct ConnectScreen {
     // current config value selected
     pub list_state: ListState,
-    pub connections: Vec<u16>,
+    pub connections: Vec<SSHConfig>,
+    loaded_connections: bool,
 }
 
 impl Default for ConnectScreen {
@@ -30,6 +34,7 @@ impl Default for ConnectScreen {
         Self {
             list_state: ListState::default().with_selected(Some(0)),
             connections: vec![],
+            loaded_connections: false,
         }
     }
 }
@@ -43,11 +48,18 @@ impl ConnectScreen {
         self.list_state.select_previous();
     }
 
-    fn loadConnections(&mut self) {
-        todo!()
+    fn load_connections(&mut self) {
+        if !self.loaded_connections {
+            self.connections = get_ssh_entries();
+            self.loaded_connections = true;
+        }
     }
 
-    pub fn match_key(&mut self, key: KeyCode, mut callback: impl FnMut(&str)) -> Option<Screen> {
+    pub fn match_key(
+        &mut self,
+        key: KeyCode,
+        mut callback: impl FnMut(SSHConfig),
+    ) -> Option<Screen> {
         return match key {
             KeyCode::Up => {
                 self.previous();
@@ -59,8 +71,9 @@ impl ConnectScreen {
             }
             KeyCode::Enter => {
                 if let Some(selected) = self.list_state.selected() {
-                    //let connection = self.connections[selected];
-                    callback("hallo")
+                    if let Some(connection) = self.connections.get(selected) {
+                        callback(connection.clone())
+                    }
                 }
                 None
             }
@@ -72,6 +85,7 @@ impl ConnectScreen {
 
 impl ConnectScreen {
     pub fn draw(&mut self, error: Option<String>, frame: &mut Frame) {
+        self.load_connections();
         let area = frame.area();
 
         let vertical = Layout::vertical([
@@ -117,22 +131,23 @@ impl ConnectScreen {
         frame.render_widget(header, chunks[0]);
 
         // List
-        let items = vec![
+        let items = self.connections.iter().map(|config| {
+            let user = config.username.as_deref().unwrap_or("");
+            let port = config.port.map(|p| p.to_string()).unwrap_or_default();
+            let auth = match &config.auth {
+                Some(AuthMethod::Key(_)) => "key",
+                Some(AuthMethod::Password(_)) => "password",
+                None => "",
+            };
+
             ListItem::new(Text::from(vec![
-                Line::styled("Connect", Style::default().fg(Color::White)),
+                Line::styled(config.host.clone(), Style::default().fg(Color::White)),
                 Line::styled(
-                    "  Connect to a saved host",
+                    format!("  {} | {}:{} | {}", user, config.hostname, port, auth),
                     Style::default().fg(Color::DarkGray),
                 ),
-            ])),
-            ListItem::new(Text::from(vec![
-                Line::styled("Settings", Style::default().fg(Color::White)),
-                Line::styled(
-                    "  Manage configuration",
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ])),
-        ];
+            ]))
+        });
 
         let list = List::new(items)
             .highlight_style(Style::default().green().bold())
