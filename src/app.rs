@@ -6,6 +6,8 @@ pub mod screen;
 pub struct App {
     pub should_quit: bool,
     pub current_screen: Screen,
+    pub current_ssh: Option<String>,
+    pub ssh_status: Option<String>,
 }
 
 impl App {

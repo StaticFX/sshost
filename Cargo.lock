@@ -1373,8 +1373,12 @@ dependencies = [
  "color-eyre",
  "crossterm",
  "ratatui",
+<<<<<<< Updated upstream
  "ssh2-config",
  "whoami",
+=======
+ "tui-prompts",
+>>>>>>> Stashed changes
 ]
 
 [[package]]
@@ -1937,6 +1941,20 @@ dependencies = [
  "sharded-slab",
  "thread_local",
  "tracing-core",
+]
+
+[[package]]
+name = "tui-prompts"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2237609b6d31db3635072e3c2a0a501ab546ce4bbdc96cf1a62c2e7ce0ac7e0f"
+dependencies = [
+ "crossterm",
+ "itertools",
+ "ratatui-core",
+ "ratatui-macros",
+ "ratatui-widgets",
+ "unicode-width",
 ]
 
 [[package]]

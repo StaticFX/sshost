@@ -1,15 +1,17 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::KeyEvent;
 
-use crate::app::App;
+use crate::app::{App, screen::Screen};
 
 pub fn update(app: &mut App, key_event: KeyEvent) {
-    match key_event.code {
-        KeyCode::Esc | KeyCode::Char('q') => app.quit(),
-        KeyCode::Char('c') | KeyCode::Char('C') if key_event.modifiers == KeyModifiers::CONTROL => {
-            app.quit()
-        }
-        KeyCode::Right | KeyCode::Char('j') => todo!(),
-        KeyCode::Left | KeyCode::Char('k') => todo!(),
-        _ => {}
+    let ssh_callback = |host: &str| app.current_ssh = Some(String::from(host));
+
+    let optional_screen = match &mut app.current_screen {
+        Screen::Intro(s) => s.match_key(key_event.code),
+        Screen::Configure(s) => s.match_key(key_event.code),
+        Screen::Connect(s) => s.match_key(key_event.code, ssh_callback),
     };
+
+    if let Some(new_screen) = optional_screen {
+        app.current_screen = new_screen;
+    }
 }

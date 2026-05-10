@@ -3,7 +3,11 @@ use ratatui::Frame;
 use crate::app::{App, screen::Screen};
 
 pub fn render(app: &mut App, frame: &mut Frame) {
-    match &app.current_screen {
-        Screen::Intro(s) => s.draw(app, frame),
+    let screen = &mut app.current_screen;
+
+    match screen {
+        Screen::Intro(s) => s.draw(frame),
+        Screen::Configure(s) => s.draw(frame),
+        Screen::Connect(s) => s.draw(app.ssh_status.clone(), frame),
     }
 }
