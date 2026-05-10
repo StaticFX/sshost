@@ -91,5 +91,5 @@ pub fn write_new_host(host: SSHConfig) -> () {
         //auth_str.push_str(auth.to_string().as_str());
     }
     let mut entry = String::new();
-    entry.push_str("Host ".to_string().join);
+    //entry.push_str("Host ".to_string().join);
 }
