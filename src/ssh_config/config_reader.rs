@@ -106,9 +106,7 @@ fn build_entry(host: &SSHConfig) -> String {
 }
 
 pub fn write_new_host(host: &SSHConfig) -> io::Result<()> {
-    let suffix = ".ssh/config";
-    let ssh_path = format!("{}/{suffix}", home_dir().unwrap().display());
-    let file = std::fs::OpenOptions::new().append(true).open(ssh_path)?;
+    let file = get_ssh_config()?;
     let mut writer = BufWriter::new(file);
     writer.write_all(build_entry(host).as_bytes())?;
     Ok(())
