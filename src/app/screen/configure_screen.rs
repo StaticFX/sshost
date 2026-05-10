@@ -1,24 +1,17 @@
-use crate::app::{
-    App,
-    screen::{
+use crate::{
+    app::screen::{
         SCREEN_HEIGHT_PERCENTAGE, SCREEN_WIDTH_PERCENTAGE, Screen, intro_screen::IntroScreen,
     },
+    ssh_config::config_reader::{self, SSHConfig},
 };
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Tabs},
+    widgets::{Block, Borders, Paragraph},
 };
-
-#[derive(Debug, Default, PartialEq)]
-pub enum AuthMethod {
-    #[default]
-    Password,
-    SshKey,
-}
 
 #[derive(Debug, Default, PartialEq)]
 pub enum Field {
@@ -27,8 +20,7 @@ pub enum Field {
     Hostname,
     Port,
     User,
-    AuthMethod,
-    AuthValue,
+    IdentityFile,
 }
 
 impl Field {
@@ -37,44 +29,54 @@ impl Field {
             Field::Host => Field::Hostname,
             Field::Hostname => Field::Port,
             Field::Port => Field::User,
-            Field::User => Field::AuthMethod,
-            Field::AuthMethod => Field::AuthValue,
-            Field::AuthValue => Field::Host,
+            Field::User => Field::IdentityFile,
+            Field::IdentityFile => Field::Host,
         }
     }
     fn prev(&self) -> Field {
         match self {
-            Field::Host => Field::AuthValue,
+            Field::Host => Field::IdentityFile,
             Field::Hostname => Field::Host,
             Field::Port => Field::Hostname,
             Field::User => Field::Port,
-            Field::AuthMethod => Field::User,
-            Field::AuthValue => Field::AuthMethod,
+            Field::IdentityFile => Field::User,
         }
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ConfigureScreen {
     pub host: String,
     pub hostname: String,
     pub port: String,
     pub user: String,
-    pub auth_value: String,
-    pub auth_method: AuthMethod,
+    pub identity_file: String,
     pub focused: Field,
     pub error: Option<String>,
 }
 
+impl Default for ConfigureScreen {
+    fn default() -> Self {
+        Self {
+            host: String::new(),
+            hostname: String::new(),
+            port: String::new(),
+            user: String::new(),
+            identity_file: "~/.ssh/id_rsa".to_string(),
+            focused: Field::default(),
+            error: None,
+        }
+    }
+}
+
 impl ConfigureScreen {
-    fn active_field_mut(&mut self) -> Option<&mut String> {
+    fn active_field_mut(&mut self) -> &mut String {
         match self.focused {
-            Field::Host => Some(&mut self.host),
-            Field::Hostname => Some(&mut self.hostname),
-            Field::Port => Some(&mut self.port),
-            Field::User => Some(&mut self.user),
-            Field::AuthValue => Some(&mut self.auth_value),
-            Field::AuthMethod => None,
+            Field::Host => &mut self.host,
+            Field::Hostname => &mut self.hostname,
+            Field::Port => &mut self.port,
+            Field::User => &mut self.user,
+            Field::IdentityFile => &mut self.identity_file,
         }
     }
 
@@ -83,7 +85,6 @@ impl ConfigureScreen {
         value: &'a str,
         is_focused: bool,
         placeholder: &'a str,
-        masked: bool,
         required: bool,
     ) -> Paragraph<'a> {
         let border_style = if is_focused {
@@ -97,13 +98,6 @@ impl ConfigureScreen {
                 "█".to_string()
             } else {
                 placeholder.to_string()
-            }
-        } else if masked {
-            let dots = "•".repeat(value.len());
-            if is_focused {
-                format!("{dots}█")
-            } else {
-                dots
             }
         } else if is_focused {
             format!("{value}█")
@@ -164,8 +158,7 @@ impl ConfigureScreen {
             Constraint::Length(3), // hostname
             Constraint::Length(3), // port
             Constraint::Length(3), // user
-            Constraint::Length(3), // auth method toggle
-            Constraint::Length(3), // auth value
+            Constraint::Length(3), // identity file
             Constraint::Fill(1),
             Constraint::Length(1), // error
         ])
@@ -178,8 +171,6 @@ impl ConfigureScreen {
                 Span::styled(" navigate  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("↵", Style::default().fg(Color::Yellow)),
                 Span::styled(" save  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("←→", Style::default().fg(Color::Yellow)),
-                Span::styled(" toggle auth  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
                 Span::styled(" back", Style::default().fg(Color::DarkGray)),
             ]))
@@ -193,7 +184,6 @@ impl ConfigureScreen {
                 &self.host,
                 self.focused == Field::Host,
                 "my-server",
-                false,
                 true,
             ),
             chunks[1],
@@ -204,7 +194,6 @@ impl ConfigureScreen {
                 &self.hostname,
                 self.focused == Field::Hostname,
                 "192.168.1.1",
-                false,
                 true,
             ),
             chunks[2],
@@ -216,7 +205,6 @@ impl ConfigureScreen {
                 self.focused == Field::Port,
                 "22",
                 false,
-                false,
             ),
             chunks[3],
         );
@@ -227,51 +215,18 @@ impl ConfigureScreen {
                 self.focused == Field::User,
                 "root",
                 false,
-                false,
             ),
             chunks[4],
         );
-
-        // Auth method as tabs
-        let selected_tab = match self.auth_method {
-            AuthMethod::Password => 0,
-            AuthMethod::SshKey => 1,
-        };
-        let tabs = Tabs::new(vec!["Password", "SSH Key"])
-            .select(selected_tab)
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .style(Style::default().fg(Color::DarkGray))
-            .divider("│")
-            .block(
-                Block::default()
-                    .title(" Auth Method ")
-                    .borders(Borders::ALL)
-                    .border_style(if self.focused == Field::AuthMethod {
-                        Style::default().fg(Color::Green)
-                    } else {
-                        Style::default().fg(Color::DarkGray)
-                    }),
-            );
-        frame.render_widget(tabs, chunks[5]);
-
-        let (auth_label, auth_placeholder, auth_masked) = match self.auth_method {
-            AuthMethod::Password => ("Password", "••••••••", true),
-            AuthMethod::SshKey => ("SSH Key Path", "~/.ssh/id_rsa", false),
-        };
         frame.render_widget(
             Self::render_field(
-                auth_label,
-                &self.auth_value,
-                self.focused == Field::AuthValue,
-                auth_placeholder,
-                auth_masked,
+                "IdentityFile",
+                &self.identity_file,
+                self.focused == Field::IdentityFile,
+                "~/.ssh/id_rsa",
                 false,
             ),
-            chunks[6],
+            chunks[5],
         );
 
         // Error
@@ -279,7 +234,7 @@ impl ConfigureScreen {
             Paragraph::new(self.error.as_deref().unwrap_or(""))
                 .style(Style::default().fg(Color::Red))
                 .centered(),
-            chunks[8],
+            chunks[7],
         );
     }
 
@@ -290,31 +245,54 @@ impl ConfigureScreen {
             KeyCode::Tab | KeyCode::Down => self.focused = self.focused.next(),
             KeyCode::BackTab | KeyCode::Up => self.focused = self.focused.prev(),
 
-            KeyCode::Left | KeyCode::Right if self.focused == Field::AuthMethod => {
-                self.auth_method = match self.auth_method {
-                    AuthMethod::Password => AuthMethod::SshKey,
-                    AuthMethod::SshKey => AuthMethod::Password,
-                };
-                self.auth_value.clear();
-            }
-
             KeyCode::Backspace => {
-                if let Some(field) = self.active_field_mut() {
-                    field.pop();
-                }
+                self.active_field_mut().pop();
             }
 
-            KeyCode::Char(c) if self.focused != Field::AuthMethod => {
-                if let Some(field) = self.active_field_mut() {
-                    field.push(c);
-                }
+            KeyCode::Char(c) => {
+                self.active_field_mut().push(c);
             }
 
             KeyCode::Enter => {
                 if self.host.is_empty() || self.hostname.is_empty() {
                     self.error = Some("Host and Hostname are required".into());
                 } else {
-                    return Some(Screen::Intro(IntroScreen::default()));
+                    let port = if self.port.is_empty() {
+                        None
+                    } else {
+                        match self.port.parse::<u16>() {
+                            Ok(p) => Some(p),
+                            Err(_) => {
+                                self.error = Some("Port must be a number".into());
+                                return None;
+                            }
+                        }
+                    };
+
+                    let username = if self.user.is_empty() {
+                        None
+                    } else {
+                        Some(self.user.clone())
+                    };
+
+                    let auth = if self.identity_file.is_empty() {
+                        None
+                    } else {
+                        Some(config_reader::AuthMethod::Key(self.identity_file.clone()))
+                    };
+
+                    let config = SSHConfig {
+                        host: self.host.clone(),
+                        hostname: self.hostname.clone(),
+                        username,
+                        port,
+                        auth,
+                    };
+
+                    match config_reader::write_new_host(&config) {
+                        Ok(_) => return Some(Screen::Intro(IntroScreen::default())),
+                        Err(e) => self.error = Some(format!("Failed to write: {e}")),
+                    }
                 }
             }
 

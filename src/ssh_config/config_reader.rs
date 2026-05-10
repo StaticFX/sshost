@@ -75,48 +75,41 @@ pub fn get_ssh_entries() -> Vec<SSHConfig> {
         .collect()
 }
 
+fn build_entry(host: &SSHConfig) -> String {
+    let mut entry = format!("\nHost {}\n", host.host);
+    entry.push_str(&format!("    Hostname {}\n", host.hostname));
 
-fn build_entry(host: SSHConfig) -> String {
-    let mut entry = String::from("");
-
-    let mut host_str = String::from("Host ");
-    host_str.push_str(host.host.as_str());
-    entry.push_str(host_str.as_str());
-
-    let mut hostname_str = String::from("Hostname ");
-    hostname_str.push_str(host.hostname.as_str());
-    entry.push_str(hostname_str.as_str());
-
-    let mut username_str = String::from("User ");
-    if let Some(user) = host.username {
-        username_str.push_str(user.as_str());
-        entry.push_str(username_str.as_str());
-    }
-
-    let mut port_str = String::from("Port ");
-    if let Some(port) = host.port {
-        port_str.push_str(port.to_string().as_str());
-        entry.push_str(port_str.as_str());
-    }
-
-    let mut auth_str = String::from("");
-    if let Some(auth) = host.auth {
-        match auth {
-            AuthMethod::Password(_p) =>  {
-                auth_str.push_str("PasswordAuthentication yes");
-            },
-            AuthMethod::Key(p) => {
-                auth_str.push_str("IdentityFile ");
-                auth_str.push_str(&p)
-
-            },
+    if let Some(user) = &host.username {
+        if !user.is_empty() {
+            entry.push_str(&format!("    User {user}\n"));
         }
-        entry.push_str(auth_str.as_str());
     }
+
+    if let Some(port) = host.port {
+        if port != 22 {
+            entry.push_str(&format!("    Port {port}\n"));
+        }
+    }
+
+    if let Some(auth) = &host.auth {
+        match auth {
+            AuthMethod::Password(_) => {
+                entry.push_str("    PasswordAuthentication yes\n");
+            }
+            AuthMethod::Key(path) => {
+                entry.push_str(&format!("    IdentityFile {path}\n"));
+            }
+        }
+    }
+
     entry
 }
-pub fn write_new_host(host: SSHConfig) -> io::Result<()> {
-    let mut writer = BufWriter::new(get_ssh_config()?);
+
+pub fn write_new_host(host: &SSHConfig) -> io::Result<()> {
+    let suffix = ".ssh/config";
+    let ssh_path = format!("{}/{suffix}", home_dir().unwrap().display());
+    let file = std::fs::OpenOptions::new().append(true).open(ssh_path)?;
+    let mut writer = BufWriter::new(file);
     writer.write_all(build_entry(host).as_bytes())?;
     Ok(())
 }
