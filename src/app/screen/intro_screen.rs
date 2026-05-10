@@ -140,7 +140,9 @@ impl IntroScreen {
             Span::styled("↑↓", Style::default().fg(Color::Yellow)),
             Span::styled(" navigate  ", Style::default().fg(Color::DarkGray)),
             Span::styled("↵", Style::default().fg(Color::Yellow)),
-            Span::styled(" select", Style::default().fg(Color::DarkGray)),
+            Span::styled(" select  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("q", Style::default().fg(Color::Yellow)),
+            Span::styled(" quit", Style::default().fg(Color::DarkGray)),
         ]))
         .centered();
         frame.render_widget(hint, chunks[4]);

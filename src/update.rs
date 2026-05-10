@@ -1,4 +1,4 @@
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::{
     app::{App, screen::Screen},
@@ -6,6 +6,12 @@ use crate::{
 };
 
 pub fn update(app: &mut App, key_event: KeyEvent) {
+    if key_event.code == KeyCode::Char('q') && !matches!(app.current_screen, Screen::Configure(_))
+    {
+        app.quit();
+        return;
+    }
+
     let ssh_callback = |config: SSHConfig| app.current_ssh = Some(config);
 
     let optional_screen = match &mut app.current_screen {
