@@ -23,13 +23,16 @@ fn main() -> color_eyre::Result<()> {
     let backend = CrosstermBackend::new(std::io::stderr());
     let terminal = Terminal::new(backend)?;
     let events = EventHandler::new(250);
-    let mut tui = Tui::new(terminal, events);
+    let mut tui = Tui::new(terminal, events, 250);
     tui.enter()?;
 
     while !app.should_quit {
         tui.draw(&mut app)?;
 
-        match tui.events.next()? {
+        let Some(ref events) = tui.events else {
+            break;
+        };
+        match events.next()? {
             Event::Tick => {}
             Event::Key(key_event) => update(&mut app, key_event),
             Event::Mouse(_) => {}

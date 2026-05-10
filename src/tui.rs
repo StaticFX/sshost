@@ -15,13 +15,19 @@ pub struct Tui {
     /// Interface to the Terminal.
     terminal: CrosstermTerminal,
     /// Terminal event handler.
-    pub events: EventHandler,
+    pub events: Option<EventHandler>,
+    /// Tick rate for the event handler.
+    tick_rate: u64,
 }
 
 impl Tui {
     /// Constructs a new instance of [`Tui`].
-    pub fn new(terminal: CrosstermTerminal, events: EventHandler) -> Self {
-        Self { terminal, events }
+    pub fn new(terminal: CrosstermTerminal, events: EventHandler, tick_rate: u64) -> Self {
+        Self {
+            terminal,
+            events: Some(events),
+            tick_rate,
+        }
     }
 
     pub fn draw(&mut self, app: &mut App) -> Result<()> {
@@ -46,6 +52,11 @@ impl Tui {
 
         self.terminal.hide_cursor()?;
         self.terminal.clear()?;
+
+        if self.events.is_none() {
+            self.events = Some(EventHandler::new(self.tick_rate));
+        }
+
         Ok(())
     }
 
@@ -56,6 +67,9 @@ impl Tui {
     }
 
     pub fn exit(&mut self) -> Result<()> {
+        if let Some(events) = self.events.take() {
+            events.stop();
+        }
         Self::reset()?;
         self.terminal.show_cursor()?;
         Ok(())
