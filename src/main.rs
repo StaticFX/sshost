@@ -10,10 +10,10 @@ use update::update;
 
 pub mod app;
 pub mod event;
+mod ssh_config;
 pub mod tui;
 pub mod ui;
 pub mod update;
-mod ssh_config;
 
 fn main() -> color_eyre::Result<()> {
     let mut app = App::default();
