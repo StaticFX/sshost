@@ -13,7 +13,7 @@ pub mod event;
 pub mod tui;
 pub mod ui;
 pub mod update;
-pub mod parser;
+mod ssh_config;
 
 fn main() -> color_eyre::Result<()> {
     let mut app = App::default();
