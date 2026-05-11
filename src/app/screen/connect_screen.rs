@@ -1,10 +1,9 @@
-use std::{boxed, collections::HashMap, fmt, net::{TcpStream, ToSocketAddrs}, os::unix::process::CommandExt, process::Command, sync::mpsc::{self, Receiver}, thread, time::Duration};
+use std::{collections::HashMap, fmt, net::{TcpStream, ToSocketAddrs}, sync::mpsc::{self, Receiver}, thread, time::Duration};
 
-use crossterm::{event::KeyCode, execute, terminal::disable_raw_mode};
+use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Flex, Layout},
-    macros::horizontal,
+    layout::{Constraint, Layout},
     style::{Color, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
@@ -14,14 +13,10 @@ use chrono::Utc;
 
 use crate::{
     app::{
-        App,
         screen::{
-            SCREEN_HEIGHT_PERCENTAGE, SCREEN_WIDTH_PERCENTAGE, Screen, connect_screen,
+            SCREEN_HEIGHT_PERCENTAGE, SCREEN_WIDTH_PERCENTAGE, Screen,
             configure_screen::ConfigureScreen,
             intro_screen::IntroScreen,
-            portforward_screen::PortForwardScreen,
-            quick_command_screen::QuickCommandScreen,
-            transfer_screen::TransferScreen,
         },
     },
     history::get_last_connection,
@@ -236,33 +231,6 @@ impl ConnectScreen {
                 }
                 None
             }
-            KeyCode::Char('s') => {
-                let filtered = self.filtered_connections();
-                if let Some(selected) = self.list_state.selected() {
-                    if let Some(connection) = filtered.get(selected) {
-                        return Some(Screen::Transfer(TransferScreen::new((*connection).clone())));
-                    }
-                }
-                None
-            }
-            KeyCode::Char('r') => {
-                let filtered = self.filtered_connections();
-                if let Some(selected) = self.list_state.selected() {
-                    if let Some(connection) = filtered.get(selected) {
-                        return Some(Screen::QuickCommand(QuickCommandScreen::new((*connection).clone())));
-                    }
-                }
-                None
-            }
-            KeyCode::Char('f') => {
-                let filtered = self.filtered_connections();
-                if let Some(selected) = self.list_state.selected() {
-                    if let Some(connection) = filtered.get(selected) {
-                        return Some(Screen::PortForward(PortForwardScreen::new((*connection).clone())));
-                    }
-                }
-                None
-            }
             KeyCode::Enter => {
                 let filtered = self.filtered_connections();
                 if let Some(selected) = self.list_state.selected() {
@@ -347,12 +315,6 @@ impl ConnectScreen {
             Span::styled(" delete  ", Style::default().fg(Color::DarkGray)),
             Span::styled("t", Style::default().fg(Color::Yellow)),
             Span::styled(" test  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("s", Style::default().fg(Color::Yellow)),
-            Span::styled(" scp  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("r", Style::default().fg(Color::Yellow)),
-            Span::styled(" run cmd  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("f", Style::default().fg(Color::Yellow)),
-            Span::styled(" forward  ", Style::default().fg(Color::DarkGray)),
             Span::styled("Esc", Style::default().fg(Color::Yellow)),
             Span::styled(" go back  ", Style::default().fg(Color::DarkGray)),
             Span::styled("q", Style::default().fg(Color::Yellow)),

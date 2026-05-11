@@ -1,19 +1,17 @@
 use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Flex, Layout},
-    macros::horizontal,
-    style::{Color, Style},
-    text::{Line, Span, Text},
+    layout::{Constraint, Layout},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
 
 use crate::app::{
-    App,
     screen::{
         SCREEN_HEIGHT_PERCENTAGE, SCREEN_WIDTH_PERCENTAGE, Screen,
         configure_screen::ConfigureScreen, connect_screen::ConnectScreen,
-        import_screen::ImportScreen, keygen_screen::KeygenScreen,
+        keygen_screen::KeygenScreen, known_hosts_screen::KnownHostsScreen,
         upload_screen::UploadScreen,
     },
 };
@@ -45,7 +43,7 @@ impl IntroScreen {
                 1 => Some(Screen::Configure(ConfigureScreen::default())),
                 2 => Some(Screen::Upload(UploadScreen::default())),
                 3 => Some(Screen::Keygen(KeygenScreen::default())),
-                4 => Some(Screen::Import(ImportScreen::default())),
+                4 => Some(Screen::KnownHosts(KnownHostsScreen::default())),
                 _ => None,
             },
             _ => None,
@@ -83,7 +81,7 @@ impl IntroScreen {
         // Inner sections: art + subtitle / gap / options / hint
         let chunks = Layout::vertical([
             Constraint::Fill(1),
-            Constraint::Length(5), // 4 art lines + 1 subtitle
+            Constraint::Length(6), // 4 art lines + 1 blank + 1 subtitle
             Constraint::Length(1), // gap
             Constraint::Length(5), // 5 options
             Constraint::Length(1), // hint
@@ -95,21 +93,22 @@ impl IntroScreen {
         let art = vec![
             Line::styled(
                 r"/ _\/ _\  /\  /\___  ___| |_ ",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
             ),
             Line::styled(
                 r"\ \ \ \  / /_/ / _ \/ __| __|",
-                Style::default().fg(Color::Gray),
+                Style::default().fg(Color::LightCyan).add_modifier(Modifier::BOLD),
             ),
             Line::styled(
                 r"_\ \_\ \/ __  / (_) \__ \ |_ ",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
             ),
             Line::styled(
                 r"\__/\__/\/ /_/ \___/|___/\__|",
-                Style::default().fg(Color::Gray),
+                Style::default().fg(Color::LightCyan).add_modifier(Modifier::BOLD),
             ),
-            Line::styled("Jump into hosts", Style::default().fg(Color::DarkGray)),
+            Line::from(""),
+            Line::styled("Jump into hosts", Style::default().fg(Color::White)),
         ];
         frame.render_widget(Paragraph::new(art).centered(), chunks[1]);
 
@@ -119,7 +118,7 @@ impl IntroScreen {
             "Add new host",
             "Upload key to server",
             "Generate SSH key",
-            "Import from known_hosts",
+            "Manage known_hosts",
         ];
         let option_layout = Layout::vertical([
             Constraint::Length(1),
@@ -148,9 +147,9 @@ impl IntroScreen {
 
         // Hint
         let hint = Paragraph::new(Line::from(vec![
-            Span::styled("↑↓", Style::default().fg(Color::Yellow)),
+            Span::styled("\u{2191}\u{2193}", Style::default().fg(Color::Yellow)),
             Span::styled(" navigate  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("↵", Style::default().fg(Color::Yellow)),
+            Span::styled("\u{21b5}", Style::default().fg(Color::Yellow)),
             Span::styled(" select  ", Style::default().fg(Color::DarkGray)),
             Span::styled("q", Style::default().fg(Color::Yellow)),
             Span::styled(" quit", Style::default().fg(Color::DarkGray)),

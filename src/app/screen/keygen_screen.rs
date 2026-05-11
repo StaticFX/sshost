@@ -12,6 +12,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
+use std::env::home_dir;
 
 const KEY_TYPES: [&str; 3] = ["ed25519", "rsa", "ecdsa"];
 
@@ -22,6 +23,20 @@ fn default_filename(key_type_index: usize) -> String {
         2 => "~/.ssh/id_ecdsa".to_string(),
         _ => "~/.ssh/id_ed25519".to_string(),
     }
+}
+
+fn expand_tilde(path: &str) -> String {
+    if path.starts_with("~/") {
+        if let Some(home) = home_dir() {
+            return format!("{}{}", home.display(), &path[1..]);
+        }
+    }
+    path.to_string()
+}
+
+fn key_file_exists(path: &str) -> bool {
+    let expanded = expand_tilde(path);
+    std::path::Path::new(&expanded).exists()
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -60,6 +75,7 @@ pub struct KeygenScreen {
     pub filename: String,
     pub focused: Field,
     pub error: Option<String>,
+    pub confirm_overwrite: bool,
 }
 
 impl Default for KeygenScreen {
@@ -71,6 +87,7 @@ impl Default for KeygenScreen {
             filename: "~/.ssh/id_ed25519".to_string(),
             focused: Field::default(),
             error: None,
+            confirm_overwrite: false,
         }
     }
 }
@@ -134,11 +151,11 @@ impl KeygenScreen {
         // Header
         frame.render_widget(
             Paragraph::new(Line::from(vec![
-                Span::styled("↑↓/Tab", Style::default().fg(Color::Yellow)),
+                Span::styled("\u{2191}\u{2193}/Tab", Style::default().fg(Color::Yellow)),
                 Span::styled(" navigate  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("←→", Style::default().fg(Color::Yellow)),
+                Span::styled("\u{25c0}\u{25b6}", Style::default().fg(Color::Yellow)),
                 Span::styled(" type  ", Style::default().fg(Color::DarkGray)),
-                Span::styled("↵", Style::default().fg(Color::Yellow)),
+                Span::styled("\u{21b5}", Style::default().fg(Color::Yellow)),
                 Span::styled(" generate  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
                 Span::styled(" back", Style::default().fg(Color::DarkGray)),
@@ -207,16 +224,42 @@ impl KeygenScreen {
             chunks[4],
         );
 
-        // Error
+        // Error / warning
+        let msg = self.error.as_deref().unwrap_or("");
+        let color = if self.confirm_overwrite {
+            Color::Yellow
+        } else {
+            Color::Red
+        };
         frame.render_widget(
-            Paragraph::new(self.error.as_deref().unwrap_or(""))
-                .style(Style::default().fg(Color::Red))
+            Paragraph::new(msg)
+                .style(Style::default().fg(color))
                 .centered(),
             chunks[6],
         );
     }
 
     pub fn handle_key(&mut self, key_code: KeyCode) -> Option<Screen> {
+        // Handle overwrite confirmation
+        if self.confirm_overwrite {
+            match key_code {
+                KeyCode::Char('y') => {
+                    self.confirm_overwrite = false;
+                    self.error = None;
+                    return self.build_request();
+                }
+                KeyCode::Char('n') | KeyCode::Esc => {
+                    self.confirm_overwrite = false;
+                    self.error = None;
+                    if key_code == KeyCode::Esc {
+                        return Some(Screen::Intro(IntroScreen::default()));
+                    }
+                    return None;
+                }
+                _ => return None,
+            }
+        }
+
         match key_code {
             KeyCode::Esc => return Some(Screen::Intro(IntroScreen::default())),
 
@@ -260,35 +303,51 @@ impl KeygenScreen {
                     self.filename.clone()
                 };
 
-                let key_type_str = KEY_TYPES[self.key_type].to_string();
+                // Check if key file already exists
+                if key_file_exists(&filename) {
+                    self.confirm_overwrite = true;
+                    self.error = Some(format!("'{}' already exists. Overwrite? y/n", filename));
+                    return None;
+                }
 
-                let bits = if key_type_str == "rsa" {
-                    let b = if self.bits.is_empty() {
-                        "4096".to_string()
-                    } else {
-                        self.bits.clone()
-                    };
-                    match b.parse::<u32>() {
-                        Ok(_) => Some(b),
-                        Err(_) => {
-                            self.error = Some("Bits must be a number".into());
-                            return None;
-                        }
-                    }
-                } else {
-                    None
-                };
-
-                return Some(Screen::KeygenExecute(KeygenRequest {
-                    key_type: key_type_str,
-                    bits,
-                    passphrase: self.passphrase.clone(),
-                    filename,
-                }));
+                return self.build_request();
             }
 
             _ => {}
         }
         None
+    }
+
+    fn build_request(&self) -> Option<Screen> {
+        let filename = if self.filename.is_empty() {
+            default_filename(self.key_type)
+        } else {
+            self.filename.clone()
+        };
+
+        let key_type_str = KEY_TYPES[self.key_type].to_string();
+
+        let bits = if key_type_str == "rsa" {
+            let b = if self.bits.is_empty() {
+                "4096".to_string()
+            } else {
+                self.bits.clone()
+            };
+            match b.parse::<u32>() {
+                Ok(_) => Some(b),
+                Err(_) => {
+                    return None;
+                }
+            }
+        } else {
+            None
+        };
+
+        Some(Screen::KeygenExecute(KeygenRequest {
+            key_type: key_type_str,
+            bits,
+            passphrase: self.passphrase.clone(),
+            filename,
+        }))
     }
 }

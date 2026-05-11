@@ -17,6 +17,8 @@ pub struct SSHConfig {
     pub port: Option<u16>,
     pub auth: Option<AuthMethod>,
     pub proxy_jump: Option<String>,
+    pub local_forward: Option<String>,
+    pub remote_forward: Option<String>,
 }
 
 fn get_ssh_config() -> io::Result<File> {
@@ -25,11 +27,48 @@ fn get_ssh_config() -> io::Result<File> {
     File::open(ssh_dir)
 }
 
+/// Parse LocalForward and RemoteForward lines from the raw SSH config, keyed by host name
+fn parse_forwards() -> (
+    std::collections::HashMap<String, String>,
+    std::collections::HashMap<String, String>,
+) {
+    let suffix = ".ssh/config";
+    let ssh_path = format!("{}/{suffix}", home_dir().unwrap().display());
+    let content = match fs::read_to_string(&ssh_path) {
+        Ok(c) => c,
+        Err(_) => return (std::collections::HashMap::new(), std::collections::HashMap::new()),
+    };
+
+    let mut local_forwards = std::collections::HashMap::new();
+    let mut remote_forwards = std::collections::HashMap::new();
+    let mut current_host: Option<String> = None;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("Host ") {
+            current_host = Some(trimmed.trim_start_matches("Host ").trim().to_string());
+        } else if let Some(ref host) = current_host {
+            let lower = trimmed.to_lowercase();
+            if lower.starts_with("localforward ") {
+                let value = trimmed.splitn(2, char::is_whitespace).nth(1).unwrap_or("").trim();
+                local_forwards.insert(host.clone(), value.to_string());
+            } else if lower.starts_with("remoteforward ") {
+                let value = trimmed.splitn(2, char::is_whitespace).nth(1).unwrap_or("").trim();
+                remote_forwards.insert(host.clone(), value.to_string());
+            }
+        }
+    }
+    (local_forwards, remote_forwards)
+}
+
 pub fn get_ssh_entries() -> Vec<SSHConfig> {
     let mut reader = BufReader::new(get_ssh_config().unwrap());
     let config = (SshConfig::default())
         .parse(&mut reader, ParseRule::STRICT)
         .unwrap();
+
+    let (local_forwards, remote_forwards) = parse_forwards();
+
     config
         .get_hosts()
         .iter()
@@ -66,6 +105,9 @@ pub fn get_ssh_entries() -> Vec<SSHConfig> {
 
             let proxy_jump = params.proxy_jump.as_ref().map(|v| v.join(","));
 
+            let local_forward = local_forwards.get(&host).cloned();
+            let remote_forward = remote_forwards.get(&host).cloned();
+
             Some(SSHConfig {
                 host,
                 hostname,
@@ -73,6 +115,8 @@ pub fn get_ssh_entries() -> Vec<SSHConfig> {
                 port: Some(port),
                 auth: Some(auth),
                 proxy_jump,
+                local_forward,
+                remote_forward,
             })
         })
         .collect()
@@ -108,6 +152,18 @@ fn build_entry(host: &SSHConfig) -> String {
     if let Some(proxy) = &host.proxy_jump {
         if !proxy.is_empty() {
             entry.push_str(&format!("    ProxyJump {proxy}\n"));
+        }
+    }
+
+    if let Some(forward) = &host.local_forward {
+        if !forward.is_empty() {
+            entry.push_str(&format!("    LocalForward {forward}\n"));
+        }
+    }
+
+    if let Some(forward) = &host.remote_forward {
+        if !forward.is_empty() {
+            entry.push_str(&format!("    RemoteForward {forward}\n"));
         }
     }
 

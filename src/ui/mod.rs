@@ -15,13 +15,6 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         Screen::UploadExecute(_) => {}
         Screen::Keygen(s) => s.draw(frame),
         Screen::KeygenExecute(_) => {}
-        Screen::PortForward(s) => s.draw(frame),
-        Screen::PortForwardExecute(_) => {}
-        Screen::Transfer(s) => s.draw(frame),
-        Screen::TransferExecute(_) => {}
-        Screen::Import(s) => s.draw(frame),
-        Screen::QuickCommand(s) => s.draw(frame),
-        Screen::QuickCommandExecute(_) => {}
-        Screen::CommandOutput(s) => s.draw(frame),
+        Screen::KnownHosts(s) => s.draw(frame),
     }
 }
