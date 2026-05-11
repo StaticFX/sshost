@@ -1,6 +1,6 @@
 use ssh2_config::{ParseRule, SshConfig};
 use std::env::home_dir;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io;
 use std::io::{BufReader, BufWriter, Write};
 
@@ -16,6 +16,7 @@ pub struct SSHConfig {
     pub username: Option<String>,
     pub port: Option<u16>,
     pub auth: Option<AuthMethod>,
+    pub proxy_jump: Option<String>,
 }
 
 fn get_ssh_config() -> io::Result<File> {
@@ -53,23 +54,25 @@ pub fn get_ssh_entries() -> Vec<SSHConfig> {
 
             let port = params.port.unwrap_or(22);
 
-            let auth = if params
-                .identity_file
-                .as_ref()
-                .map(|files| !files.is_empty())
-                .unwrap_or(false)
-            {
-                AuthMethod::Key
+            let auth = if let Some(files) = params.identity_file.as_ref() {
+                if let Some(path) = files.first() {
+                    AuthMethod::Key(path.to_string_lossy().to_string())
+                } else {
+                    AuthMethod::Password(String::new())
+                }
             } else {
-                AuthMethod::Password
+                AuthMethod::Password(String::new())
             };
+
+            let proxy_jump = params.proxy_jump.as_ref().map(|v| v.join(","));
 
             Some(SSHConfig {
                 host,
                 hostname,
                 username: Some(username),
                 port: Some(port),
-                auth: Some(auth("a".to_string())),
+                auth: Some(auth),
+                proxy_jump,
             })
         })
         .collect()
@@ -102,6 +105,12 @@ fn build_entry(host: &SSHConfig) -> String {
         }
     }
 
+    if let Some(proxy) = &host.proxy_jump {
+        if !proxy.is_empty() {
+            entry.push_str(&format!("    ProxyJump {proxy}\n"));
+        }
+    }
+
     entry
 }
 
@@ -111,5 +120,47 @@ pub fn write_new_host(host: &SSHConfig) -> io::Result<()> {
     let file = std::fs::OpenOptions::new().append(true).open(ssh_path)?;
     let mut writer = BufWriter::new(file);
     writer.write_all(build_entry(host).as_bytes())?;
+    Ok(())
+}
+
+pub fn delete_host(host_name: &str) -> io::Result<()> {
+    let suffix = ".ssh/config";
+    let ssh_path = format!("{}/{suffix}", home_dir().unwrap().display());
+    let content = fs::read_to_string(&ssh_path)?;
+
+    let mut result = String::new();
+    let mut inside_target_block = false;
+
+    for line in content.lines() {
+        if line.starts_with("Host ") {
+            let name = line.trim_start_matches("Host ").trim();
+            if name == host_name {
+                inside_target_block = true;
+                continue;
+            } else {
+                inside_target_block = false;
+            }
+        }
+
+        if inside_target_block {
+            continue;
+        }
+
+        result.push_str(line);
+        result.push('\n');
+    }
+
+    fs::write(&ssh_path, result)?;
+    Ok(())
+}
+
+pub fn update_host(old_host_name: &str, new_config: &SSHConfig) -> io::Result<()> {
+    delete_host(old_host_name)?;
+
+    let suffix = ".ssh/config";
+    let ssh_path = format!("{}/{suffix}", home_dir().unwrap().display());
+    let file = std::fs::OpenOptions::new().append(true).open(ssh_path)?;
+    let mut writer = BufWriter::new(file);
+    writer.write_all(build_entry(new_config).as_bytes())?;
     Ok(())
 }

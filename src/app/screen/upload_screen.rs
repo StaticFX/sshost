@@ -2,116 +2,117 @@ use crate::{
     app::screen::{
         SCREEN_HEIGHT_PERCENTAGE, SCREEN_WIDTH_PERCENTAGE, Screen, intro_screen::IntroScreen,
     },
-    ssh_config::config_reader::{self, AuthMethod, SSHConfig},
     ui::form_field::render_field,
 };
 use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
+use std::env::home_dir;
+
+fn find_ssh_pub_keys() -> Vec<String> {
+    let ssh_dir = home_dir().unwrap().join(".ssh");
+    let mut keys = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&ssh_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.ends_with(".pub") {
+                    keys.push(format!("~/.ssh/{}", name));
+                }
+            }
+        }
+    }
+    keys.sort();
+    keys
+}
 
 #[derive(Debug, Default, PartialEq)]
 pub enum Field {
     #[default]
-    Host,
+    KeyPath,
     Hostname,
     Port,
     User,
-    IdentityFile,
-    ProxyJump,
+    Password,
 }
 
 impl Field {
     fn next(&self) -> Field {
         match self {
-            Field::Host => Field::Hostname,
+            Field::KeyPath => Field::Hostname,
             Field::Hostname => Field::Port,
             Field::Port => Field::User,
-            Field::User => Field::IdentityFile,
-            Field::IdentityFile => Field::ProxyJump,
-            Field::ProxyJump => Field::Host,
+            Field::User => Field::Password,
+            Field::Password => Field::KeyPath,
         }
     }
     fn prev(&self) -> Field {
         match self {
-            Field::Host => Field::ProxyJump,
-            Field::Hostname => Field::Host,
+            Field::KeyPath => Field::Password,
+            Field::Hostname => Field::KeyPath,
             Field::Port => Field::Hostname,
             Field::User => Field::Port,
-            Field::IdentityFile => Field::User,
-            Field::ProxyJump => Field::IdentityFile,
+            Field::Password => Field::User,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct ConfigureScreen {
-    pub host: String,
+pub struct UploadScreen {
+    pub key_path: String,
     pub hostname: String,
     pub port: String,
     pub user: String,
-    pub identity_file: String,
-    pub proxy_jump: String,
+    pub password: String,
     pub focused: Field,
     pub error: Option<String>,
-    pub editing: Option<String>,
+    pub available_keys: Vec<String>,
+    pub key_index: usize,
 }
 
-impl Default for ConfigureScreen {
+impl Default for UploadScreen {
     fn default() -> Self {
+        let available_keys = find_ssh_pub_keys();
+        let key_path = available_keys
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "~/.ssh/id_rsa.pub".to_string());
         Self {
-            host: String::new(),
+            key_path,
             hostname: String::new(),
             port: String::new(),
             user: String::new(),
-            identity_file: "~/.ssh/id_rsa".to_string(),
-            proxy_jump: String::new(),
+            password: String::new(),
             focused: Field::default(),
             error: None,
-            editing: None,
+            available_keys,
+            key_index: 0,
         }
     }
 }
 
-impl ConfigureScreen {
-    pub fn with_hostname(hostname: String) -> Self {
-        Self {
-            hostname: hostname.clone(),
-            host: hostname,
-            ..Default::default()
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct UploadRequest {
+    pub key_path: String,
+    pub hostname: String,
+    pub port: Option<u16>,
+    pub user: Option<String>,
+    pub password: Option<String>,
+}
 
-    pub fn from_config(config: &SSHConfig) -> Self {
-        let identity_file = match &config.auth {
-            Some(AuthMethod::Key(path)) => path.clone(),
-            _ => "~/.ssh/id_rsa".to_string(),
-        };
-        Self {
-            host: config.host.clone(),
-            hostname: config.hostname.clone(),
-            port: config.port.map(|p| p.to_string()).unwrap_or_default(),
-            user: config.username.clone().unwrap_or_default(),
-            identity_file,
-            proxy_jump: config.proxy_jump.clone().unwrap_or_default(),
-            focused: Field::default(),
-            error: None,
-            editing: Some(config.host.clone()),
-        }
-    }
-
+impl UploadScreen {
     fn active_field_mut(&mut self) -> &mut String {
         match self.focused {
-            Field::Host => &mut self.host,
+            Field::KeyPath => &mut self.key_path,
             Field::Hostname => &mut self.hostname,
             Field::Port => &mut self.port,
             Field::User => &mut self.user,
-            Field::IdentityFile => &mut self.identity_file,
-            Field::ProxyJump => &mut self.proxy_jump,
+            Field::Password => &mut self.password,
         }
     }
 
@@ -134,14 +135,8 @@ impl ConfigureScreen {
 
         let all = horizontal[1];
 
-        let title = if self.editing.is_some() {
-            " Edit Connection "
-        } else {
-            " Configure Connection "
-        };
-
         let outer = Block::default()
-            .title(title)
+            .title(" Upload SSH Key ")
             .title_style(Style::default().fg(Color::White))
             .borders(Borders::ALL)
             .border_style(Style::new().dark_gray());
@@ -150,12 +145,11 @@ impl ConfigureScreen {
 
         let chunks = Layout::vertical([
             Constraint::Length(2), // header
-            Constraint::Length(3), // host
+            Constraint::Length(3), // key path
             Constraint::Length(3), // hostname
             Constraint::Length(3), // port
             Constraint::Length(3), // user
-            Constraint::Length(3), // identity file
-            Constraint::Length(3), // proxy jump
+            Constraint::Length(3), // password
             Constraint::Fill(1),
             Constraint::Length(1), // error
         ])
@@ -166,8 +160,10 @@ impl ConfigureScreen {
             Paragraph::new(Line::from(vec![
                 Span::styled("↑↓/Tab", Style::default().fg(Color::Yellow)),
                 Span::styled(" navigate  ", Style::default().fg(Color::DarkGray)),
+                Span::styled("←→", Style::default().fg(Color::Yellow)),
+                Span::styled(" key  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("↵", Style::default().fg(Color::Yellow)),
-                Span::styled(" save  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(" upload  ", Style::default().fg(Color::DarkGray)),
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
                 Span::styled(" back", Style::default().fg(Color::DarkGray)),
             ]))
@@ -175,13 +171,19 @@ impl ConfigureScreen {
             chunks[0],
         );
 
+        // Public key field with left/right selection
+        let key_display = if self.focused == Field::KeyPath && !self.available_keys.is_empty() {
+            format!("\u{25C0} {} \u{25B6}", self.key_path)
+        } else {
+            self.key_path.clone()
+        };
         frame.render_widget(
             render_field(
-                "Host",
-                &self.host,
-                self.focused == Field::Host,
-                "my-server",
-                true,
+                "Public Key",
+                &key_display,
+                self.focused == Field::KeyPath,
+                "~/.ssh/id_rsa.pub",
+                false,
             ),
             chunks[1],
         );
@@ -215,25 +217,18 @@ impl ConfigureScreen {
             ),
             chunks[4],
         );
+
+        // Password field (masked)
+        let masked: String = "*".repeat(self.password.len());
         frame.render_widget(
             render_field(
-                "IdentityFile",
-                &self.identity_file,
-                self.focused == Field::IdentityFile,
-                "~/.ssh/id_rsa",
-                false,
+                "Password",
+                &masked,
+                self.focused == Field::Password,
+                "",
+                true,
             ),
             chunks[5],
-        );
-        frame.render_widget(
-            render_field(
-                "ProxyJump",
-                &self.proxy_jump,
-                self.focused == Field::ProxyJump,
-                "bastion-host",
-                false,
-            ),
-            chunks[6],
         );
 
         // Error
@@ -241,16 +236,33 @@ impl ConfigureScreen {
             Paragraph::new(self.error.as_deref().unwrap_or(""))
                 .style(Style::default().fg(Color::Red))
                 .centered(),
-            chunks[8],
+            chunks[7],
         );
     }
 
-    pub fn match_key(&mut self, key_code: KeyCode) -> Option<Screen> {
+    pub fn handle_key(&mut self, key_code: KeyCode) -> Option<Screen> {
         match key_code {
             KeyCode::Esc => return Some(Screen::Intro(IntroScreen::default())),
 
             KeyCode::Tab | KeyCode::Down => self.focused = self.focused.next(),
             KeyCode::BackTab | KeyCode::Up => self.focused = self.focused.prev(),
+
+            KeyCode::Left => {
+                if self.focused == Field::KeyPath && !self.available_keys.is_empty() {
+                    if self.key_index == 0 {
+                        self.key_index = self.available_keys.len() - 1;
+                    } else {
+                        self.key_index -= 1;
+                    }
+                    self.key_path = self.available_keys[self.key_index].clone();
+                }
+            }
+            KeyCode::Right => {
+                if self.focused == Field::KeyPath && !self.available_keys.is_empty() {
+                    self.key_index = (self.key_index + 1) % self.available_keys.len();
+                    self.key_path = self.available_keys[self.key_index].clone();
+                }
+            }
 
             KeyCode::Backspace => {
                 self.active_field_mut().pop();
@@ -261,8 +273,10 @@ impl ConfigureScreen {
             }
 
             KeyCode::Enter => {
-                if self.host.is_empty() || self.hostname.is_empty() {
-                    self.error = Some("Host and Hostname are required".into());
+                if self.hostname.is_empty() {
+                    self.error = Some("Hostname is required".into());
+                } else if self.password.is_empty() {
+                    self.error = Some("Password is required for authentication".into());
                 } else {
                     let port = if self.port.is_empty() {
                         None
@@ -276,44 +290,25 @@ impl ConfigureScreen {
                         }
                     };
 
-                    let username = if self.user.is_empty() {
+                    let key_path = if self.key_path.is_empty() {
+                        "~/.ssh/id_rsa.pub".to_string()
+                    } else {
+                        self.key_path.clone()
+                    };
+
+                    let user = if self.user.is_empty() {
                         None
                     } else {
                         Some(self.user.clone())
                     };
 
-                    let identity = if self.identity_file.is_empty() {
-                        "~/.ssh/id_rsa".to_string()
-                    } else {
-                        self.identity_file.clone()
-                    };
-                    let auth = Some(config_reader::AuthMethod::Key(identity));
-
-                    let proxy_jump = if self.proxy_jump.is_empty() {
-                        None
-                    } else {
-                        Some(self.proxy_jump.clone())
-                    };
-
-                    let config = SSHConfig {
-                        host: self.host.clone(),
+                    return Some(Screen::UploadExecute(UploadRequest {
+                        key_path,
                         hostname: self.hostname.clone(),
-                        username,
                         port,
-                        auth,
-                        proxy_jump,
-                    };
-
-                    let result = if let Some(ref old_name) = self.editing {
-                        config_reader::update_host(old_name, &config)
-                    } else {
-                        config_reader::write_new_host(&config)
-                    };
-
-                    match result {
-                        Ok(_) => return Some(Screen::Intro(IntroScreen::default())),
-                        Err(e) => self.error = Some(format!("Failed to write: {e}")),
-                    }
+                        user,
+                        password: Some(self.password.clone()),
+                    }));
                 }
             }
 

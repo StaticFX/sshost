@@ -13,42 +13,41 @@ use crate::app::{
     screen::{
         SCREEN_HEIGHT_PERCENTAGE, SCREEN_WIDTH_PERCENTAGE, Screen,
         configure_screen::ConfigureScreen, connect_screen::ConnectScreen,
+        import_screen::ImportScreen, keygen_screen::KeygenScreen,
+        upload_screen::UploadScreen,
     },
 };
 
 #[derive(Debug, Default)]
 pub struct IntroScreen {
-    // 0 = existing host
-    // 1 = new host
     pub selected: usize,
 }
 
 impl IntroScreen {
-    fn select_existing(&mut self) {
-        self.selected = 0;
-    }
-
-    fn select_new(&mut self) {
-        self.selected = 1;
-    }
+    const OPTION_COUNT: usize = 5;
 
     pub fn match_key(&mut self, key: KeyCode) -> Option<Screen> {
         return match key {
             KeyCode::Up => {
-                self.select_existing();
+                if self.selected > 0 {
+                    self.selected -= 1;
+                }
                 None
             }
             KeyCode::Down => {
-                self.select_new();
+                if self.selected < Self::OPTION_COUNT - 1 {
+                    self.selected += 1;
+                }
                 None
             }
-            KeyCode::Enter => {
-                if self.selected == 0 {
-                    Some(Screen::Connect(ConnectScreen::default()))
-                } else {
-                    Some(Screen::Configure(ConfigureScreen::default()))
-                }
-            }
+            KeyCode::Enter => match self.selected {
+                0 => Some(Screen::Connect(ConnectScreen::default())),
+                1 => Some(Screen::Configure(ConfigureScreen::default())),
+                2 => Some(Screen::Upload(UploadScreen::default())),
+                3 => Some(Screen::Keygen(KeygenScreen::default())),
+                4 => Some(Screen::Import(ImportScreen::default())),
+                _ => None,
+            },
             _ => None,
         };
     }
@@ -86,7 +85,7 @@ impl IntroScreen {
             Constraint::Fill(1),
             Constraint::Length(5), // 4 art lines + 1 subtitle
             Constraint::Length(1), // gap
-            Constraint::Length(2), // 2 options
+            Constraint::Length(5), // 5 options
             Constraint::Length(1), // hint
             Constraint::Fill(1),
         ])
@@ -115,9 +114,21 @@ impl IntroScreen {
         frame.render_widget(Paragraph::new(art).centered(), chunks[1]);
 
         // Options
-        let options = ["Connect with existing", "Add new host"];
-        let option_layout =
-            Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).split(chunks[3]);
+        let options = [
+            "Connect with existing",
+            "Add new host",
+            "Upload key to server",
+            "Generate SSH key",
+            "Import from known_hosts",
+        ];
+        let option_layout = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(chunks[3]);
 
         for (i, option) in options.iter().enumerate() {
             let selected = i == self.selected;
